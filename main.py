@@ -30,7 +30,12 @@ def decode_audio(base64_str, filename="input.wav"):
 
 # -------- Step 3: Extract MFCC Features --------
 def extract_features(filename):
-    y, sr = librosa.load(filename, sr=None)
+    # Load with specific sample rate (16kHz) as per improvement suggestion
+    y, sr = librosa.load(filename, sr=16000)
+    
+    # Normalize loudness
+    y = librosa.util.normalize(y)
+    
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
     return np.mean(mfcc.T, axis=0)
 
@@ -59,16 +64,21 @@ def classify(request: AudioRequest, x_api_key: str = Header(...)):
         filename = decode_audio(request.audio_base64)
         features = extract_features(filename).reshape(1, -1)
 
-        prediction_val = model.predict(features)[0]
-        confidence_val = model.predict_proba(features)[0].max()
+        # Get probabilities: [prob_human, prob_ai] (assuming 0=Human, 1=AI)
+        probs = model.predict_proba(features)[0]
+        prob_human = probs[0]
+        prob_ai = probs[1]
         
-        # Determine label and explanation
-        if prediction_val == 1:
-            prediction = "AI_GENERATED"
-            explanation = "Synthetic speech artifacts and unnatural pitch transitions detected."
-        else:
+        # Lower threshold: if Human probability > 0.4, classify as HUMAN
+        # This makes it easier to classify as HUMAN (reducing False Positives for AI)
+        if prob_human > 0.4:
             prediction = "HUMAN"
+            confidence_val = prob_human
             explanation = "Natural speech patterns and physiological micro-tremors observed."
+        else:
+            prediction = "AI_GENERATED"
+            confidence_val = prob_ai
+            explanation = "Synthetic speech artifacts and unnatural pitch transitions detected."
 
         return {
             "prediction": prediction,
