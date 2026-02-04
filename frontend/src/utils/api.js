@@ -19,9 +19,27 @@ export const convertAudioToBase64 = async (audioUrl) => {
     }
 };
 
-export const testApi = async (endpoint, apiKey, audioUrl, language = 'en') => {
+const convertFileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            // reader.result includes "data:audio/xyz;base64," prefix.
+            // This is compatible with our python backend which strips header if comma present.
+            resolve(reader.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
+export const testApi = async (endpoint, apiKey, audioSource, language = 'en') => {
     try {
-        const base64Audio = await convertAudioToBase64(audioUrl);
+        let base64Audio;
+        if (audioSource instanceof File) {
+            base64Audio = await convertFileToBase64(audioSource);
+        } else {
+            base64Audio = await convertAudioToBase64(audioSource);
+        }
 
         // The python code expects a JSON with "audio_base64" key.
         // It also expects x_api_key header.
